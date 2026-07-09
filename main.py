@@ -1,61 +1,65 @@
-from fastapi import FastAPI ,Depends ,status ,HTTPException
-from sqlalchemy.orm import Session 
-from database import get_db
-from sqlalchemy import Text
-from serviec import get_all_class_svr ,get_class_by_id ,update_class,delete_class
-from schema import createclass ,uppdate_class
+from fastapi import FastAPI, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
+DATABASE_URL = "mysql+pymysql://root:password@localhost:3306/shop_db"
+
+engine = create_engine(DATABASE_URL)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+
+class CustomerModel(Base):
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String(255), nullable=False)
+    phone = Column(String(20), nullable=False)
+    address = Column(String(255), nullable=False)
+
+
+class CustomerUpdate(BaseModel):
+    full_name: str
+    phone: str
+    address: str
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 app = FastAPI()
 
-@app.get('/test')
-def get_test(db:Session = Depends(get_db)) :
-    try :
-        db.execute('select 1')
-        return {'message' : 'succese'}
-    except :
-        return {"message" : 'lỗi'}
 
-@app.get('/classroom')
-def get_all_class(db:Session = Depends(get_db)) :
-    list_class = get_all_class_svr(db)
+@app.put("/customers/{customer_id}")
+def update_customer(
+    customer_id: int, customer_update: CustomerUpdate, db: Session = Depends(get_db)
+):
+    customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
+
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    customer.full_name = customer_update.full_name
+    customer.phone = customer_update.phone
+    customer.address = customer_update.address
+
+    db.commit()
+    db.refresh(customer)
+
     return {
-        "message" : 'lỗi',
-        "data" : list_class
+        "message": "Customer updated successfully",
+        "data": {
+            "id": customer.id,
+            "full_name": customer.full_name,
+            "phone": customer.phone,
+            "address": customer.address,
+        },
     }
-# lấy thông tin theo id 
-
-@app.get('/classroom/{id}')
-def get_class_bt_id (db : Session = Depends(get_db)) :
-    classroom = get_class_by_id(db, id) 
-    return {
-        "message" : 'seccese',
-        "data" : classroom
-    }
-
-#  thêm sinh viên 
-@app.post("/classroom")
-def create_class(new_class:createclass ,db:Session = Depends(get_db)) :
-    classroom = create_class(db,new_class)
-    return {
-        "message" : 'seccese',
-        "data" : classroom
-    }
-    
-
-#  sửa
-@app.put('/classroom/{id}')
-def update_class(update_clas : uppdate_class , db:Session = Depends(get_db)) :
-    class_romm = update_class(id ,db,update_clas)
-    return {
-        "message" : 'seccese',
-        "data" : class_romm
-    }
-
-# xoá 
-@app.delete("/classroom/{id}")
-def delete(db:Session =Depends(get_db)):
-    class_room = delete_class(db ,id)
-    return {
-        'message' :'succes',
-        'data' : class_room
-    }
-
